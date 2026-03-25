@@ -4,15 +4,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-codes.sh"
+
 RECIPIENT="${1:?Usage: send-sms.sh <recipient> <message>}"
 MESSAGE="${2:?Usage: send-sms.sh <recipient> <message>}"
 
 # Load credentials from env file
-ENV_FILE="$(dirname "$0")/../.env"
-if [[ -f "$ENV_FILE" ]]; then
-  # Source .env if exists
-  source "$ENV_FILE"
-fi
+ENV_FILE="$SCRIPT_DIR/../.env"
+[ -f "$ENV_FILE" ] && source "$ENV_FILE"
 
 API_KEY="${WEB2SMS_API_KEY:?WEB2SMS_API_KEY not set}"
 SECRET="${WEB2SMS_SECRET:?WEB2SMS_SECRET not set}"
@@ -49,17 +49,20 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 
-echo "HTTP Status: $HTTP_CODE"
-echo "Response: $BODY"
+# Parse response
+ERROR_CODE=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error',{}).get('code',''))" 2>/dev/null || echo "")
+ERROR_CODE="${ERROR_CODE:-$HTTP_CODE}"
+ERROR_MSG=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error',{}).get('message',''))" 2>/dev/null || echo "parse error")
 
-if [[ "$HTTP_CODE" == "201" ]]; then
-  ERROR_CODE=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error',{}).get('code',''))" 2>/dev/null || echo "")
-  if [[ "$ERROR_CODE" == "0" ]]; then
-    SMS_ID=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id','unknown'))" 2>/dev/null || echo "unknown")
-    echo "SMS trimis cu succes! ID: $SMS_ID"
-    exit 0
-  fi
+if [[ "$ERROR_CODE" == "0" ]]; then
+  SMS_ID=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id','unknown'))" 2>/dev/null || echo "unknown")
+  echo "✅ SMS sent successfully! ID: $SMS_ID"
+  exit 0
+else
+  ERROR_DESC=$(decode_error "$ERROR_CODE" "$ERROR_MSG")
+  echo "❌ SMS failed (HTTP $HTTP_CODE)"
+  echo "Error code: $ERROR_CODE"
+  echo "Error: $ERROR_DESC"
+  echo "Raw: $ERROR_MSG"
+  exit 1
 fi
-
-echo "Eroare la trimitere SMS"
-exit 1

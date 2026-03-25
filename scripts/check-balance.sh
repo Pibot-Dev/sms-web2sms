@@ -4,7 +4,10 @@
 
 set -euo pipefail
 
-ENV_FILE="$(dirname "$0")/../.env"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-codes.sh"
+
+ENV_FILE="$SCRIPT_DIR/../.env"
 [ -f "$ENV_FILE" ] && source "$ENV_FILE"
 
 API_KEY="${WEB2SMS_API_KEY:?WEB2SMS_API_KEY not set}"
@@ -18,10 +21,8 @@ URL="/prepaid/message"
 STRING_TO_HASH="${API_KEY}${NONCE}${METHOD}${URL}${SECRET}"
 SIGNATURE=$(echo -n "$STRING_TO_HASH" | sha512sum | awk '{print $1}')
 
-# Build JSON payload
 PAYLOAD="{\"apiKey\":\"${API_KEY}\",\"nonce\":\"${NONCE}\"}"
 
-# Send request
 RESPONSE=$(curl -s -w "\n%{http_code}" \
   -X BALANCE "https://www.web2sms.ro/prepaid/message" \
   -u "${API_KEY}:${SIGNATURE}" \
@@ -33,8 +34,15 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 
+ERROR_CODE=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error',{}).get('code',''))" 2>/dev/null || echo "-1")
 BALANCE=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error',{}).get('message','unknown'))" 2>/dev/null || echo "parse error")
 
-echo "Balance: $BALANCE"
-echo "HTTP Status: $HTTP_CODE"
-echo "Response: $BODY"
+if [[ "$ERROR_CODE" == "0" ]]; then
+  echo "✅ Balance: $BALANCE credits"
+  exit 0
+else
+  ERROR_DESC=$(decode_error "$ERROR_CODE" "$BALANCE")
+  echo "❌ Balance check failed (HTTP $HTTP_CODE)"
+  echo "Error: $ERROR_DESC"
+  exit 1
+fi
