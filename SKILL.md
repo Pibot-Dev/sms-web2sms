@@ -57,6 +57,16 @@ bash scripts/check-status.sh "<message_id>"
 - Status codes: `0` pending, `1` sent, `2` delivered, `3` failed
 - Uses web2sms.ro SOAP API
 
+### Check balance
+
+```bash
+bash scripts/check-balance.sh
+```
+
+- Returns prepaid credit balance
+- Uses HTTP method `BALANCE` on `/prepaid/message`
+- Auth: SHA-512 signature (`apiKey + nonce + Method + URI + secret`)
+
 ## Disclaimer
 
 This skill is not affiliated with [web2sms.ro](https://www.web2sms.ro). SMS costs are billed to your prepaid account. Always obtain explicit user permission before sending. Do not use for spam or bulk messaging. Comply with Romanian telecom regulations (ANCOM) and GDPR.
