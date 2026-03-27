@@ -1,14 +1,75 @@
 #!/usr/bin/env bash
 # send-sms.sh — Send SMS via web2sms.ro API
-# Usage: send-sms.sh <recipient> <message>
+# Usage: send-sms.sh [--force-gsm7] <recipient> <message>
+#
+# Options:
+#   --force-gsm7  Transliterate message to GSM-7 charset before sending
+#                 (strips diacritics and non-GSM characters)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/error-codes.sh"
 
-RECIPIENT="${1:?Usage: send-sms.sh <recipient> <message>}"
-MESSAGE="${2:?Usage: send-sms.sh <recipient> <message>}"
+# Parse flags
+FORCE_GSM7=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --force-gsm7) FORCE_GSM7=1; shift ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+RECIPIENT="${1:?Usage: send-sms.sh [--force-gsm7] <recipient> <message>}"
+MESSAGE="${2:?Usage: send-sms.sh [--force-gsm7] <recipient> <message>}"
+
+# GSM-7 transliteration via Python
+if [[ "$FORCE_GSM7" -eq 1 ]]; then
+  MESSAGE=$(python3 -c "
+import sys
+
+GSM7_BASIC = set(
+    '@£\$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞ Æ æß É'
+    ' !\"#¤%&\\'()*+,-./'
+    '0123456789:;<=>?¡'
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    'ÄÖÑܧ¿'
+    'abcdefghijklmnopqrstuvwxyz'
+    'äöñüà\n\r'
+)
+GSM7_EXT = set('^{}[]~|€\\\\')
+GSM7 = GSM7_BASIC | GSM7_EXT
+
+TRANSLIT = {
+    'ă':'a','Ă':'A','î':'i','Î':'I','â':'a','Â':'A',
+    'ș':'s','Ș':'S','ț':'t','Ț':'T',
+    'ş':'s','Ş':'S','ţ':'t','Ţ':'T',
+    'ê':'e','ë':'e','û':'u','ú':'u',
+    'ï':'i','í':'i','ô':'o','ó':'o','õ':'o',
+    'á':'a','ã':'a','ç':'c','ý':'y','ÿ':'y',
+    'ń':'n','ś':'s','š':'s','ź':'z','ž':'z','ż':'z',
+    'ć':'c','č':'c','ř':'r','ď':'d','ð':'d',
+    'ľ':'l','ł':'l','ě':'e','ů':'u','ğ':'g','ı':'i',
+    'Ê':'E','Ë':'E','Û':'U','Ú':'U','Ï':'I','Í':'I',
+    'Ô':'O','Ó':'O','Õ':'O','Á':'A','Ã':'A','Ý':'Y',
+    'Ń':'N','Ś':'S','Š':'S','Ź':'Z','Ž':'Z','Ż':'Z',
+    'Ć':'C','Č':'C','Ř':'R','Ď':'D','Ð':'D',
+    'Ľ':'L','Ł':'L','Ě':'E','Ů':'U','Ğ':'G','İ':'I',
+    '\u201c':'\"','\u201d':'\"','\u2018':\"'\",'\u2019':\"'\",
+    '\u2014':'-','\u2013':'-','\u2026':'...',
+}
+
+text = sys.stdin.read().rstrip('\n')
+result = []
+for ch in text:
+    if ch in GSM7:
+        result.append(ch)
+    elif ch in TRANSLIT:
+        result.append(TRANSLIT[ch])
+    # else: strip
+print(''.join(result), end='')
+" <<< "$MESSAGE")
+fi
 
 # Load credentials from env file
 ENV_FILE="$SCRIPT_DIR/../.env"

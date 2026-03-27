@@ -38,11 +38,12 @@ Configure in OpenClaw:
 ### Send SMS
 
 ```bash
-bash scripts/send-sms.sh "<phone>" "<message>"
+bash scripts/send-sms.sh [--force-gsm7] "<phone>" "<message>"
 ```
 
 - `phone` — recipient number, Romanian format: `0722XXXXXX` or `+40722XXXXXX`
 - `message` — SMS body text
+- `--force-gsm7` — *(optional)* transliterate message to GSM-7 charset before sending. Strips Romanian diacritics (ă→a, ș→s, ț→t, etc.), curly quotes, em/en dashes, and any non-GSM-7 characters. Use this to avoid multi-part messages caused by Unicode encoding.
 - Returns message ID on success (HTTP 201)
 - Auth: SHA-512 HMAC signature per request
 - Dependencies: `curl`, `python3`, `sha512sum`
